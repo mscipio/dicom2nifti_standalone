@@ -1,11 +1,10 @@
-function name = proposeName(modality, seriesNumber)
-%PROPOSENAME Suggest a PHI-neutral DICOM output filename.
+function name = proposeName(inputFile)
+%PROPOSENAME Use the selected input basename for the output suggestion.
 
-modality = lower(strtrim(modality));
-if isempty(modality), modality = 'dicom'; end
-if isnumeric(seriesNumber) && isscalar(seriesNumber) && isfinite(seriesNumber)
-    name = sprintf('%s_series_%04d.nii', modality, round(seriesNumber));
-else
-    name = sprintf('%s_series.nii', modality);
+[~, name, extension] = fileparts(inputFile);
+if strcmpi(extension, '.gz') && length(name) >= 4 && ...
+        strcmpi(name(end - 3:end), '.nii')
+    [~, name, ~] = fileparts(name);
 end
+name = [name '.nii'];
 end

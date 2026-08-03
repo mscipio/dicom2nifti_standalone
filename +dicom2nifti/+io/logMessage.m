@@ -1,19 +1,14 @@
-function logMessage(level, context, formatStr, varargin)
-%LOGMESSAGE Write a formatted event to console.
-%   logMessage(level, context, formatStr, ...)
-%
-%   PseudoCT-style output:
-%   [2026-07-31 11:35:23] SUCCESS Conversion completed
-%
-%   Levels: INFO, SUCCESS, WARN, ERROR
+function logMessage(level, context, formatString, varargin)
+%LOGMESSAGE Write one timestamped, leveled console event.
+%#ok<*DATST,*TNOW1> datestr/now are intentional for MATLAB R2019 support.
 
-timestamp = datestr(now, 'yyyy-mm-dd HH:MM:SS');
-message = sprintf(formatStr, varargin{:});
+message = sprintf(formatString, varargin{:});
 message = regexprep(message, '[\r\n]+', ' | ');
-
 if isempty(context)
-    fprintf(1, '[%s] %-7s %s\n', timestamp, upper(level), message);
+    fprintf(1, '[%s] %-7s %s\n', ...
+        datestr(now, 'yyyy-mm-dd HH:MM:SS'), upper(level), message);
 else
-    fprintf(1, '[%s] %-7s [%s] %s\n', timestamp, upper(level), context, message);
+    fprintf(1, '[%s] %-7s [%s] %s\n', ...
+        datestr(now, 'yyyy-mm-dd HH:MM:SS'), upper(level), context, message);
 end
 end

@@ -1,11 +1,9 @@
 function outputPath = fromNifti(inputFile, outputFile)
-%FROMNIFTI Copy or decompress NIfTI to destination.
-%   outputPath = fromNifti(inputFile, outputFile)
-%
-%   Handles .nii (copy) and .nii.gz (gunzip).
+%FROMNIFTI Copy or decompress an existing NIfTI file.
 
 outputDir = fileparts(outputFile);
-if ~isempty(outputDir) && exist(outputDir, 'dir') ~= 7
+if isempty(outputDir), outputDir = pwd; end
+if exist(outputDir, 'dir') ~= 7
     [ok, message] = mkdir(outputDir);
     if ~ok
         error('dicom2nifti:core:CreateOutputDirFailed', ...
@@ -13,51 +11,36 @@ if ~isempty(outputDir) && exist(outputDir, 'dir') ~= 7
     end
 end
 
-[~, ~, ext] = fileparts(inputFile);
-if strcmpi(ext, '.gz')
-    % Decompress: gunzip to temp, then move
-    tempDir = tempname(outputDir);
-    [ok, message] = mkdir(tempDir);
+[~, ~, extension] = fileparts(inputFile);
+if strcmpi(extension, '.gz')
+    stageDir = tempname(outputDir);
+    [ok, message] = mkdir(stageDir);
     if ~ok
         error('dicom2nifti:core:CreateStageFailed', ...
-            'Could not create decompression staging directory %s: %s', ...
-            tempDir, message);
+            'Could not create decompression staging directory %s: %s', stageDir, message);
     end
-    cleanup = onCleanup(@() localCleanup(tempDir));
-    gunzip(inputFile, tempDir);
-    % Find the uncompressed file
-    niiFiles = dir(fullfile(tempDir, '*.nii'));
+    cleanup = onCleanup(@() cleanupDirectory(stageDir));
+    gunzip(inputFile, stageDir);
+    niiFiles = dir(fullfile(stageDir, '*.nii'));
     if isempty(niiFiles)
         error('dicom2nifti:core:DecompressFailed', ...
-            'gunzip did not produce .nii file');
+            'gunzip did not produce a .nii file for %s.', inputFile);
     end
-    [ok, message] = movefile(fullfile(tempDir, niiFiles(1).name), outputFile, 'f');
+    [ok, message] = movefile(fullfile(stageDir, niiFiles(1).name), outputFile, 'f');
     if ~ok
         error('dicom2nifti:core:PromoteFailed', ...
             'Could not promote decompressed NIfTI to %s: %s', outputFile, message);
     end
 else
-    if ~sameFile(inputFile, outputFile)
-        [ok, message] = copyfile(inputFile, outputFile, 'f');
-        if ~ok
-            error('dicom2nifti:core:CopyFailed', ...
-                'Could not copy NIfTI to %s: %s', outputFile, message);
-        end
+    [ok, message] = copyfile(inputFile, outputFile, 'f');
+    if ~ok
+        error('dicom2nifti:core:CopyFailed', ...
+            'Could not copy NIfTI to %s: %s', outputFile, message);
     end
 end
 outputPath = outputFile;
 end
 
-function result = sameFile(first, second)
-if ispc
-    result = strcmpi(first, second);
-else
-    result = strcmp(first, second);
-end
-end
-
-function localCleanup(dirPath)
-if exist(dirPath, 'dir') == 7
-    rmdir(dirPath, 's');
-end
+function cleanupDirectory(directory)
+if exist(directory, 'dir') == 7, rmdir(directory, 's'); end
 end

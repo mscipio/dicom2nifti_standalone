@@ -1,5 +1,5 @@
 function version = readVersion()
-%READVERSION Return the release version from the repository VERSION file.
+%READVERSION Read the authoritative VERSION file.
 
 rootDir = fileparts(fileparts(fileparts(mfilename('fullpath'))));
 versionFile = fullfile(rootDir, 'VERSION');

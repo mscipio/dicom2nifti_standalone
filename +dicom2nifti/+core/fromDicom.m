@@ -1,12 +1,7 @@
 function outputPath = fromDicom(inputFile, outputFile)
-%FROMDICOM Convert DICOM series to NIfTI via SPM.
-%   outputPath = fromDicom(inputFile, outputFile)
-%
-%   Collects DICOM files by SeriesInstanceUID, converts with SPM8,
-%   promotes result to outputFile.
+%FROMDICOM Convert one MR or CT DICOM series to NIfTI via SPM.
 
 series = dicom2nifti.dicom.collectSeries(inputFile);
-
 outputDir = fileparts(outputFile);
 if isempty(outputDir), outputDir = pwd; end
 if exist(outputDir, 'dir') ~= 7
@@ -28,10 +23,8 @@ currentDir = pwd;
 cd(stageDir);
 cwdCleanup = onCleanup(@() cd(currentDir));
 
-dcmFn = char(series.files);
-hdr = spm_dicom_headers(dcmFn, true);
-spm_dicom_convert(hdr, 'all', 'flat', 'nii');
-
+headers = spm_dicom_headers(char(series.files), true);
+spm_dicom_convert(headers, 'all', 'flat', 'nii');
 tempOutput = fullfile(stageDir, 'Temp_spm.nii');
 if exist(tempOutput, 'file') ~= 2
     error('dicom2nifti:core:ConversionFailed', ...
@@ -44,10 +37,9 @@ if ~ok
         'Could not promote converted NIfTI to %s: %s', outputFile, message);
 end
 outputPath = outputFile;
+clear cwdCleanup stageCleanup;
 end
 
 function cleanupDirectory(directory)
-if exist(directory, 'dir') == 7
-    rmdir(directory, 's');
-end
+if exist(directory, 'dir') == 7, rmdir(directory, 's'); end
 end

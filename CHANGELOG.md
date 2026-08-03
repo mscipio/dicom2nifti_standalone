@@ -1,36 +1,50 @@
 # Changelog
 
-This project uses [Semantic Versioning](https://semver.org/). `VERSION` is the authoritative code-readable version; each released value must have one matching heading here.
+`VERSION` is the authoritative semantic version.
 
-## [1.0.0] - 2026-08-03
+## [1.1.0] - 2026-08-03
 
 ### Added
 
-- A single R2019-compatible `dcm2nii` entrypoint for GUI and scripted conversion.
-- Exact DICOM series collection by `SeriesInstanceUID`, duplicate SOP rejection, and deterministic ordering.
-- PHI-neutral automatic DICOM output names based only on modality and series number.
-- SPM8-backed MR conversion plus unvalidated CT and static PET paths.
-- `.nii` copy, `.nii.gz` decompression, and staged gzip output.
-- Runtime version reading from `VERSION` and `dcm2nii_version.txt` records beside delivered outputs.
-- Timestamped, leveled console events without persistent logger state.
+- Restored the minimal modular layout under `+dicom2nifti`.
+- Added exact `SeriesInstanceUID` collection with selective DICOM metadata reads.
+- Added PET static routing and legacy-style PET 4D acquisition-time/TriggerTime grouping.
+- Added `ActualFrameDuration`, per-frame SPM conversion, PMOD timing extension output, and `Frame_info.txt`.
 
-### Safety
+### Changed
 
-- Replaced the partial 8 KiB Explicit-VR parser, which used incorrect PET tag identities, with MATLAB `dicominfo`.
-- Isolated SPM conversion in destination-local temporary directories and restored both working directory and MATLAB path on success or failure.
-- Disabled dynamic and gated PET conversion. The inherited 4D implementation had no representative test data and did not preserve a reliable spatial header or dependency boundary.
-- Added ignore rules for DICOM/NIfTI clinical data, generated outputs, and local `.atl` internals.
+- Kept `dcm2nii.m` as the orchestration, GUI/CLI, routing, overwrite, and reporting entry point.
+- GUI uses Java input/save choosers with the required caller/input-folder initialization and NIfTI filters.
+- CLI output collisions now fail by default. GUI collisions require an explicit confirmation warning.
+- Added the explicit CLI escape hatch `'Overwrite', true`; no automatic suffixes are generated.
+- Preserved source DICOM and NIfTI files and kept temporary conversion work outside source folders.
+- Reuses a complete caller-provided SPM installation instead of prepending the
+  configured SPM path; the configured path is fallback-only.
 
 ### Validation
 
-- MATLAB R2026a Update 2 `checkcode` parsed all 12 MATLAB files. Its only two advisories recommend `datetime` over the deliberately R2019-compatible `datestr(now, ...)` logger.
-- Focused tests passed for version agreement, NIfTI copy, gzip/gunzip round trip, source preservation, relative paths, and version-record creation.
-- The real MPRAGE test series collected exactly 208 MR instances from Series 11.
-- Real MR conversion produced a `256 x 256 x 208` `int16` volume byte-identical to `tests/2.7.0/local-2026/MR_PET/MPRAGE_spm.nii`: SHA-256 `4fe73ee6695ee4b5bbb2bf9b0166ae160b396e247807c68c92b3e0561691caac`, maximum voxel difference `0`, RMS difference `0`, changed voxels `0`, and maximum affine difference `0`.
-- Direct compressed MR conversion produced a 13,951,071-byte `.nii.gz`; decompression was voxel-exact to the same reference, left no intermediate `.nii`, and restored MATLAB path and working directory.
+- Real MR MPRAGE conversion produced `256 x 256 x 208` in approximately `12.0 s` conversion time on the tested environment.
+- Selective exact-series collection found all 208 MR instances.
+- NIfTI copy, gzip, gunzip, synthetic overwrite protection, and MATLAB diagnostics were exercised.
 
 ### Limitations
 
-- CT and static PET conversion are implemented but unvalidated because no representative datasets are included.
-- Dynamic and gated PET are unsupported in `1.0.0`.
-- Runtime verification is bounded to the MATLAB/SPM versions stated above; it is not evidence of cross-runtime numerical parity.
+- No representative PET dataset is available; PET 3D/4D behavior is not claimed as clinically validated.
+- The configured SPM tree lacks `spm_vol_nifti`, so dynamic/gated PET fails clearly before writing output until a complete SPM NIfTI stack is configured.
+- `.i`/flat conversion, registration, BrainPET orientation, denoising, Dixon, UTE/UMAP, reslicing, fusion, and unrelated legacy utilities remain excluded.
+
+## [1.0.1] - 2026-08-03
+
+### Changed
+
+- Java input and save choosers replaced native dialogs for the standalone workflow.
+- Exact series matching, NIfTI copy/decompression, optional gzip output, and temporary SPM staging were retained.
+
+### Validation
+
+- Real 208-slice MPRAGE conversion produced a `256 x 256 x 208` NIfTI.
+- CT and PET remained unvalidated without representative datasets.
+
+## [1.0.0] - 2026-08-03
+
+- Initial standalone release boundary.

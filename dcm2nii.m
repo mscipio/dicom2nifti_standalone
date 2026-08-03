@@ -1,77 +1,55 @@
 function varargout = dcm2nii(varargin)
 %DCM2NII Convert one DICOM series or NIfTI file to NIfTI.
-%   dcm2nii()
-%   dcm2nii(inputFile)
-%   dcm2nii(inputFile, outputFile)
-%   dcm2nii(..., 'Compression', 'gz')
+%   dcm2nii()                         GUI: Java input/save choosers
+%   dcm2nii(inputFile)                automatic output beside input
+%   dcm2nii(inputFile, outputFile)    CLI conversion
+%   dcm2nii(..., 'Compression', 'gz') write .nii.gz output
+%   dcm2nii(..., 'Overwrite', true)   explicitly allow replacement
 
-originalPath = path;
-pathCleanup = onCleanup(@() path(originalPath));
 rootDir = fileparts(mfilename('fullpath'));
+originalPath = path;
+originalDir = pwd;
+cleanup = onCleanup(@() restoreSession(originalPath, originalDir));
 addpath(rootDir, '-begin');
 addpath(fullfile(rootDir, 'config'), '-begin');
 
-[positional, compression] = parseInputs(varargin);
-if isempty(positional)
-    [inputName, inputDir] = uigetfile( ...
-        {'*.dcm;*.DCM;*.ima;*.IMA', 'DICOM files'; ...
-         '*.nii;*.nii.gz', 'NIfTI files'}, ...
-        'Select one DICOM instance or NIfTI file');
-    if isnumeric(inputName) && isscalar(inputName) && inputName == 0, return; end
-    inputFile = fullfile(inputDir, inputName);
-    defaultName = proposeOutputName(inputFile);
-    [outputName, outputDir] = uiputfile( ...
-        {'*.nii', 'NIfTI uncompressed (*.nii)'; ...
-         '*.nii.gz', 'NIfTI compressed (*.nii.gz)'}, ...
-        'Save as', fullfile(inputDir, defaultName));
-    if isnumeric(outputName) && isscalar(outputName) && outputName == 0, return; end
-    outputFile = fullfile(outputDir, outputName);
-elseif isscalar(positional)
-    inputFile = positional{1};
-    outputFile = '';
-else
-    inputFile = positional{1};
-    outputFile = positional{2};
+[inputFile, outputFile, compression, overwrite, interactive, cancelled] = ...
+    requestFiles(varargin{:});
+if cancelled
+    if nargout > 0, varargout{1} = ''; end
+    return;
 end
 
-if ~ischar(inputFile) || isempty(strtrim(inputFile)) || exist(inputFile, 'file') ~= 2
+inputFile = absolutePath(inputFile);
+if exist(inputFile, 'file') ~= 2
     error('dcm2nii:InvalidInputFile', 'Input file does not exist: %s', inputFile);
 end
-inputFile = strtrim(inputFile);
-if isempty(fileparts(inputFile)), inputFile = fullfile(pwd, inputFile); end
-[isNifti, isCompressedInput] = classifyNifti(inputFile);
 
+isNifti = isNiftiFile(inputFile);
 if isempty(outputFile)
-    outputFile = automaticOutput(inputFile, isNifti, isCompressedInput);
-elseif ~ischar(outputFile) || isempty(strtrim(outputFile))
-    error('dcm2nii:InvalidOutputFile', 'Output file must be a nonempty character vector.');
+    outputFile = fullfile(fileparts(inputFile), ...
+        dicom2nifti.io.proposeName(inputFile));
 else
-    outputFile = strtrim(outputFile);
+    outputFile = absolutePath(outputFile);
 end
-if isempty(fileparts(outputFile)), outputFile = fullfile(pwd, outputFile); end
-
 [outputFile, compression] = normalizeOutput(outputFile, compression);
-if strcmp(compression, 'gz')
-    workingOutput = outputFile(1:end-3);
-else
-    workingOutput = outputFile;
+
+if sameFile(inputFile, outputFile)
+    error('dcm2nii:InputOutputSame', ...
+        'Input and output are the same file; the source will not be overwritten.');
 end
 
-outputDir = fileparts(outputFile);
-if ~isempty(outputDir) && exist(outputDir, 'dir') ~= 7
-    [ok, message] = mkdir(outputDir);
-    if ~ok
-        error('dcm2nii:CreateOutputDirFailed', ...
-            'Could not create output directory %s: %s', outputDir, message);
-    end
+if isempty(fileparts(outputFile))
+    outputFile = fullfile(pwd, outputFile);
 end
+outputDir = fileparts(outputFile);
 
 if isNifti
     workflow = 'nifti';
 else
-    tags = dicom2nifti.dicom.readTags(inputFile);
-    modality = upper(strtrim(tags.Modality));
-    if strcmp(modality, 'PET'), modality = 'PT'; end
+    routingTags = dicom2nifti.dicom.readTags(inputFile, ...
+        {'SeriesInstanceUID', 'Modality', 'SeriesNumber'}, true);
+    modality = normalizeModality(routingTags.Modality);
     if strcmp(modality, 'PT')
         workflow = 'pet';
     elseif any(strcmp(modality, {'MR', 'CT'}))
@@ -81,31 +59,58 @@ else
             'Unsupported DICOM modality ''%s''. Only MR, CT, and PT are accepted.', ...
             modality);
     end
+end
+
+if strcmp(workflow, 'pet')
+    % The legacy 4D workflow writes this sidecar. Protect it even when the
+    % selected PET happens to be static and does not need the file.
+    existingOutputs = {outputFile, fullfile(outputDir, 'dcm2nii_version.txt'), ...
+        fullfile(outputDir, 'Frame_info.txt')};
+else
+    existingOutputs = {outputFile, fullfile(outputDir, 'dcm2nii_version.txt')};
+end
+[overwrite, cancelled] = resolveOverwrite(existingOutputs, overwrite, interactive);
+if cancelled
+    if nargout > 0, varargout{1} = ''; end
+    return;
+end
+
+if ~isempty(outputDir) && exist(outputDir, 'dir') ~= 7
+    [ok, message] = mkdir(outputDir);
+    if ~ok
+        error('dcm2nii:CreateOutputDirFailed', ...
+            'Could not create output directory %s: %s', outputDir, message);
+    end
+end
+
+if ~isNifti
     setupSpm();
+end
+
+if strcmp(compression, 'gz')
+    workingOutput = outputFile(1:end - 3);
+else
+    workingOutput = outputFile;
 end
 
 dicom2nifti.io.logMessage('INFO', 'dcm2nii', 'Input: %s', inputFile);
 dicom2nifti.io.logMessage('INFO', 'dcm2nii', 'Output: %s', outputFile);
 startTime = tic;
 
-if strcmp(workflow, 'nifti') && strcmp(compression, 'gz') && sameFile(inputFile, outputFile)
-    outputPath = inputFile;
+if strcmp(workflow, 'nifti')
+    outputPath = dicom2nifti.core.fromNifti(inputFile, workingOutput);
+elseif strcmp(workflow, 'dicom')
+    outputPath = dicom2nifti.core.fromDicom(inputFile, workingOutput);
 else
-    switch workflow
-        case 'nifti'
-            outputPath = dicom2nifti.core.fromNifti(inputFile, workingOutput);
-        case 'dicom'
-            outputPath = dicom2nifti.core.fromDicom(inputFile, workingOutput);
-        case 'pet'
-            outputPath = dicom2nifti.core.fromPet(inputFile, workingOutput);
-    end
-    if strcmp(compression, 'gz')
-        outputPath = compressTo(outputPath, outputFile, inputFile);
-    end
+    outputPath = dicom2nifti.core.fromPet(inputFile, workingOutput, overwrite);
+end
+
+if strcmp(compression, 'gz')
+    outputPath = compressTo(outputPath, outputFile, inputFile);
 end
 
 try
-    dicom2nifti.io.writeVersionLog(outputPath);
+    dicom2nifti.io.writeVersionLog(outputPath, overwrite);
 catch ME
     dicom2nifti.io.logMessage('WARN', 'dcm2nii', ...
         'Output written, but version record failed: %s', ME.message);
@@ -113,86 +118,184 @@ end
 
 dicom2nifti.io.logMessage('SUCCESS', 'dcm2nii', ...
     'Conversion completed (%.1f sec)', toc(startTime));
-if nargout > 0, varargout{1} = outputPath; end
+if nargout > 0
+    varargout{1} = outputPath;
+end
 end
 
-function [positional, compression] = parseInputs(arguments)
-positional = {};
+function [inputFile, outputFile, compression, overwrite, interactive, cancelled] = ...
+    requestFiles(varargin)
 compression = 'none';
+overwrite = false;
+positional = {};
 index = 1;
-while index <= numel(arguments)
-    value = arguments{index};
+while index <= nargin
+    value = varargin{index};
     if ischar(value) && strcmpi(value, 'Compression')
-        if index == numel(arguments) || ~ischar(arguments{index + 1})
+        if index == nargin || ~ischar(varargin{index + 1})
             error('dcm2nii:InvalidCompression', ...
-                'Compression requires ''none'' or ''gz''.');
+                'Compression must be ''none'' or ''gz''.');
         end
-        compression = lower(strtrim(arguments{index + 1}));
+        compression = lower(strtrim(varargin{index + 1}));
+        index = index + 2;
+    elseif ischar(value) && strcmpi(value, 'Overwrite')
+        if index == nargin || ...
+                ~(islogical(varargin{index + 1}) || isnumeric(varargin{index + 1})) || ...
+                ~isscalar(varargin{index + 1})
+            error('dcm2nii:InvalidOverwrite', ...
+                'Overwrite must be a logical or numeric scalar.');
+        end
+        overwrite = logical(varargin{index + 1});
         index = index + 2;
     else
         positional{end + 1} = value; %#ok<AGROW>
         index = index + 1;
     end
 end
-if numel(positional) > 2
+
+if ~any(strcmp(compression, {'none', 'gz'})) || numel(positional) > 2
     error('dcm2nii:InvalidInput', ...
-        'Usage: dcm2nii(inputFile [, outputFile] [, ''Compression'', ''gz''])');
-end
-if ~any(strcmp(compression, {'none', 'gz'}))
-    error('dcm2nii:InvalidCompression', 'Compression must be ''none'' or ''gz''.');
-end
+        'Use dcm2nii(inputFile [, outputFile] [, ''Compression'', ''gz'']).');
 end
 
-function [isNifti, isCompressed] = classifyNifti(filePath)
-lowerPath = lower(filePath);
-isCompressed = length(lowerPath) >= 7 && strcmp(lowerPath(end-6:end), '.nii.gz');
-[~, ~, extension] = fileparts(lowerPath);
-isNifti = isCompressed || strcmp(extension, '.nii');
-end
-
-function name = proposeOutputName(inputFile)
-[isNifti, isCompressed] = classifyNifti(inputFile);
-if isNifti
-    [~, name, ~] = fileparts(inputFile);
-    if isCompressed, [~, name, ~] = fileparts(name); end
-    name = [name '.nii'];
+cancelled = false;
+interactive = isempty(positional);
+if isempty(positional)
+    [inputFile, cancelled] = chooseInputFile();
+    if cancelled
+        outputFile = '';
+        return;
+    end
+    inputFile = deblank(inputFile);
+    [outputFile, cancelled] = chooseOutputFile(inputFile, ...
+        dicom2nifti.io.proposeName(inputFile));
+    if cancelled
+        inputFile = '';
+        outputFile = '';
+        return;
+    end
+elseif isscalar(positional)
+    inputFile = positional{1};
+    outputFile = '';
 else
-    tags = dicom2nifti.dicom.readTags(inputFile);
-    name = dicom2nifti.io.proposeName(tags.Modality, tags.SeriesNumber);
+    inputFile = positional{1};
+    outputFile = positional{2};
 end
 end
 
-function outputFile = automaticOutput(inputFile, isNifti, isCompressed)
-inputDir = fileparts(inputFile);
-if isNifti
-    [~, name, ~] = fileparts(inputFile);
-    if isCompressed, [~, name, ~] = fileparts(name); end
-    outputFile = fullfile(inputDir, [name '.nii']);
+function [inputFile, cancelled] = chooseInputFile()
+%CHOOSEINPUTFILE Select one input, starting in the caller's current folder.
+inputDirectory = pwd;
+if exist('javaObjectEDT', 'file') == 2
+    chooser = javaObjectEDT('javax.swing.JFileChooser', inputDirectory);
 else
-    tags = dicom2nifti.dicom.readTags(inputFile);
-    outputFile = fullfile(inputDir, ...
-        dicom2nifti.io.proposeName(tags.Modality, tags.SeriesNumber));
+    chooser = javaObject('javax.swing.JFileChooser', inputDirectory);
+end
+chooser.setDialogTitle('Select DICOM or NIfTI input');
+chooser.setDialogType(javax.swing.JFileChooser.OPEN_DIALOG);
+chooser.setCurrentDirectory(javaObject('java.io.File', inputDirectory));
+dicomFilter = javaObject('javax.swing.filechooser.FileNameExtensionFilter', ...
+    'DICOM (*.dcm, *.DCM, *.ima, *.IMA)', {'dcm', 'DCM', 'ima', 'IMA'});
+niftiFilter = javaObject('javax.swing.filechooser.FileNameExtensionFilter', ...
+    'NIfTI (*.nii, *.nii.gz)', {'nii', 'gz'});
+chooser.setAcceptAllFileFilterUsed(true);
+chooser.addChoosableFileFilter(dicomFilter);
+chooser.addChoosableFileFilter(niftiFilter);
+chooser.setFileFilter(dicomFilter);
+result = chooser.showOpenDialog([]);
+if result ~= 0
+    inputFile = '';
+    cancelled = true;
+    return;
+end
+selected = chooser.getSelectedFile();
+if isempty(selected)
+    inputFile = '';
+    cancelled = true;
+else
+    inputFile = char(selected.getAbsolutePath());
+    cancelled = false;
 end
 end
 
-function [outputFile, compression] = normalizeOutput(outputFile, compression)
-lowerOutput = lower(outputFile);
-isGz = length(lowerOutput) >= 7 && strcmp(lowerOutput(end-6:end), '.nii.gz');
-[~, ~, extension] = fileparts(lowerOutput);
-if isGz
-    compression = 'gz';
-elseif isempty(extension)
-    outputFile = [outputFile '.nii'];
-elseif ~strcmp(extension, '.nii')
-    error('dcm2nii:InvalidOutputExtension', ...
-        'Output must end in .nii or .nii.gz: %s', outputFile);
+function [outputFile, cancelled] = chooseOutputFile(inputFile, defaultName)
+inputDirectory = fileparts(inputFile);
+if exist('javaObjectEDT', 'file') == 2
+    chooser = javaObjectEDT('javax.swing.JFileChooser', inputDirectory);
+else
+    chooser = javaObject('javax.swing.JFileChooser', inputDirectory);
 end
-if strcmp(compression, 'gz') && ~isGz
-    outputFile = [outputFile '.gz'];
+chooser.setDialogTitle('Save NIfTI output');
+chooser.setDialogType(javax.swing.JFileChooser.SAVE_DIALOG);
+chooser.setCurrentDirectory(javaObject('java.io.File', inputDirectory));
+chooser.setSelectedFile(javaObject('java.io.File', ...
+    fullfile(inputDirectory, defaultName)));
+niiFilter = javaObject('javax.swing.filechooser.FileNameExtensionFilter', ...
+    'NIfTI (*.nii)', {'nii'});
+gzFilter = javaObject('javax.swing.filechooser.FileNameExtensionFilter', ...
+    'NIfTI compressed (*.nii.gz)', {'gz'});
+chooser.setAcceptAllFileFilterUsed(false);
+chooser.addChoosableFileFilter(niiFilter);
+chooser.addChoosableFileFilter(gzFilter);
+chooser.setFileFilter(niiFilter);
+result = chooser.showSaveDialog([]);
+if result ~= 0
+    outputFile = '';
+    cancelled = true;
+    return;
+end
+selected = chooser.getSelectedFile();
+if isempty(selected)
+    outputFile = '';
+    cancelled = true;
+    return;
+end
+outputFile = char(selected.getAbsolutePath());
+selectedDescription = char(chooser.getFileFilter().getDescription());
+if strcmp(selectedDescription, 'NIfTI compressed (*.nii.gz)')
+    outputFile = normalizeChooserName(outputFile, true);
+else
+    outputFile = normalizeChooserName(outputFile, false);
+end
+cancelled = false;
+end
+
+function outputFile = normalizeChooserName(outputFile, compressed)
+if compressed
+    if isNiftiGz(outputFile), return; end
+    if length(outputFile) >= 4 && strcmpi(outputFile(end - 3:end), '.nii')
+        outputFile = [outputFile '.gz'];
+    elseif isempty(fileExtension(outputFile))
+        outputFile = [outputFile '.nii.gz'];
+    else
+        outputFile = [outputFile '.nii.gz'];
+    end
+else
+    if isNiftiGz(outputFile)
+        outputFile = outputFile(1:end - 3);
+    elseif ~strcmpi(fileExtension(outputFile), '.nii')
+        outputFile = [outputFile '.nii'];
+    end
 end
 end
 
 function setupSpm()
+%SETUPSPM Reuse caller SPM or add the configured fallback temporarily.
+existingHeaders = which('spm_dicom_headers');
+existingConvert = which('spm_dicom_convert');
+if ~isempty(existingHeaders) || ~isempty(existingConvert)
+    if isempty(existingHeaders) || isempty(existingConvert)
+        error('dcm2nii:SpmIncomplete', ...
+            'The caller MATLAB path contains only part of an SPM installation.');
+    end
+    if ~sameSpmDirectory(existingHeaders, existingConvert)
+        error('dcm2nii:SpmMixedInstallations', ...
+            ['spm_dicom_headers and spm_dicom_convert resolve to different ' ...
+             'SPM installations. dcm2nii will not mix them.']);
+    end
+    return;
+end
+
 config = dicom2nifti_config();
 if ~isfield(config, 'spm_root') || ~ischar(config.spm_root) || isempty(config.spm_root)
     error('dcm2nii:SpmRootMissing', ...
@@ -205,15 +308,67 @@ end
 addpath(config.spm_root, '-begin');
 if exist('spm_dicom_headers', 'file') ~= 2 || exist('spm_dicom_convert', 'file') ~= 2
     error('dcm2nii:SpmIncomplete', ...
-        'Configured SPM root does not provide DICOM conversion functions: %s', ...
-        config.spm_root);
+         'Configured SPM root does not provide DICOM conversion functions: %s', ...
+         config.spm_root);
 end
 end
 
-function finalPath = compressTo(sourcePath, finalPath, originalInput)
-finalDir = fileparts(finalPath);
-if isempty(finalDir), finalDir = pwd; end
-stageDir = tempname(finalDir);
+function result = sameSpmDirectory(firstPath, secondPath)
+result = strcmp(fileparts(firstPath), fileparts(secondPath));
+end
+
+function [outputFile, compression] = normalizeOutput(outputFile, compression)
+outputFile = absolutePath(outputFile);
+if isNiftiGz(outputFile)
+    compression = 'gz';
+elseif strcmpi(fileExtension(outputFile), '.nii')
+    % Keep the caller's explicit compression choice.
+elseif isempty(fileExtension(outputFile))
+    outputFile = [outputFile '.nii'];
+else
+    error('dcm2nii:InvalidOutputExtension', ...
+        'Output must end in .nii or .nii.gz: %s', outputFile);
+end
+if strcmp(compression, 'gz') && ~isNiftiGz(outputFile)
+    if ~strcmpi(fileExtension(outputFile), '.nii')
+        error('dcm2nii:InvalidOutputExtension', ...
+            'Compressed output must be based on a .nii name: %s', outputFile);
+    end
+    outputFile = [outputFile '.gz'];
+end
+end
+
+function [overwrite, cancelled] = resolveOverwrite(paths, overwrite, interactive)
+existing = {};
+for index = 1:numel(paths)
+    if exist(paths{index}, 'file') == 2 || exist(paths{index}, 'dir') == 7
+        existing{end + 1} = paths{index}; %#ok<AGROW>
+    end
+end
+cancelled = false;
+if isempty(existing), return; end
+
+if interactive
+    details = sprintf('  %s\n', existing{:});
+    question = sprintf(['The following output file(s) already exist:\n\n%s\n' ...
+        '\nOverwrite them? Existing source files will not be changed.'], details);
+    answer = questdlg(question, 'Confirm overwrite', 'Overwrite', 'Cancel', 'Cancel');
+    if ~strcmp(answer, 'Overwrite')
+        cancelled = true;
+        return;
+    end
+    overwrite = true;
+elseif ~overwrite
+    error('dcm2nii:OutputExists', ...
+        ['Destination already exists and was not changed: %s\n' ...
+         'Use ''Overwrite'', true to explicitly replace it.'], existing{1});
+end
+end
+
+function outputPath = compressTo(sourcePath, outputPath, originalInput)
+outputDir = fileparts(outputPath);
+if isempty(outputDir), outputDir = pwd; end
+stageDir = tempname(outputDir);
 [ok, message] = mkdir(stageDir);
 if ~ok
     error('dcm2nii:CompressionStageFailed', ...
@@ -224,18 +379,57 @@ created = gzip(sourcePath, stageDir);
 if isempty(created) || exist(created{1}, 'file') ~= 2
     error('dcm2nii:CompressionFailed', 'gzip did not produce an output file.');
 end
-[ok, message] = movefile(created{1}, finalPath, 'f');
+[ok, message] = movefile(created{1}, outputPath, 'f');
 if ~ok
     error('dcm2nii:CompressionPromoteFailed', ...
-        'Could not promote compressed output to %s: %s', finalPath, message);
+        'Could not promote compressed output to %s: %s', outputPath, message);
 end
 if ~sameFile(sourcePath, originalInput) && exist(sourcePath, 'file') == 2
     delete(sourcePath);
 end
 end
 
+function result = isNiftiFile(filePath)
+result = strcmpi(fileExtension(filePath), '.nii') || isNiftiGz(filePath);
+end
+
+function result = isNiftiGz(filePath)
+result = length(filePath) >= 7 && strcmpi(filePath(end - 6:end), '.nii.gz');
+end
+
+function extension = fileExtension(filePath)
+[~, ~, extension] = fileparts(filePath);
+end
+
+function pathValue = absolutePath(pathValue)
+if isstring(pathValue), pathValue = char(pathValue); end
+if ~ischar(pathValue)
+    error('dcm2nii:InvalidPath', 'Paths must be character vectors.');
+end
+pathValue = strtrim(pathValue);
+if isempty(pathValue), return; end
+if isunix && pathValue(1) == '~'
+    pathValue = fullfile(getenv('HOME'), pathValue(2:end));
+end
+if isempty(fileparts(pathValue))
+    pathValue = fullfile(pwd, pathValue);
+end
+end
+
+function modality = normalizeModality(modality)
+if isstring(modality), modality = char(modality); end
+if ~ischar(modality), modality = ''; end
+modality = upper(strtrim(modality));
+if strcmp(modality, 'PET'), modality = 'PT'; end
+end
+
 function result = sameFile(first, second)
 if ispc, result = strcmpi(first, second); else, result = strcmp(first, second); end
+end
+
+function restoreSession(originalPath, originalDir)
+path(originalPath);
+if exist(originalDir, 'dir') == 7, cd(originalDir); end
 end
 
 function cleanupDirectory(directory)
