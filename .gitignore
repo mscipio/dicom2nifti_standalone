@@ -1,0 +1,34 @@
+# Local analysis and editor tooling
+.codegraph/
+.atl/
+.vscode/
+.idea/
+
+# MATLAB generated files
+*.asv
+*.m~
+*.autosave
+*.slxc
+*.mex*
+slprj/
+codegen/
+
+# Clinical inputs and generated conversion outputs
+*.dcm
+*.DCM
+*.ima
+*.IMA
+*.nii
+*.nii.gz
+Frame_info*.txt
+dcm2nii_version.txt
+
+# Test and coverage output
+test-results/
+coverage/
+*.trx
+
+# Operating-system files
+.DS_Store
+Thumbs.db
+desktop.ini
