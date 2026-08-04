@@ -2,6 +2,33 @@
 
 `VERSION` is the authoritative semantic version.
 
+## [1.1.1] - 2026-08-04
+
+### Fixed
+
+- `spm_dicom_convert` outputs are now resolved through
+  `dicom2nifti.core.resolveOutputs`, which requires exactly one `.nii`
+  output; zero or multiple outputs fail clearly instead of assuming
+  `Temp_spm.nii`.
+- Legacy `.i` input files are rejected up front with
+  `dcm2nii:UnsupportedInput`; only DICOM and NIfTI (`.nii`, `.nii.gz`)
+  input is accepted.
+- Removed the mixed-SPM-directory guard while keeping the clear
+  `dcm2nii:SpmIncomplete` failure for a partial caller SPM; the
+  configured `spm_root` remains fallback-only.
+
+### Added
+
+- Focused integration test `scripts/test_dcm2nii_integration.m` covering
+  input handling, output cardinality, SPM authority, state restoration,
+  and edge cases. SPM-dependent checks self-report as UNVERIFIED when no
+  SPM is on the MATLAB path.
+
+### Validation
+
+- Real DICOM conversion on the tested environment passed, confirming the
+  SPM-dependent conversion and SPM-coexistence paths end to end.
+
 ## [1.1.0] - 2026-08-03
 
 ### Added
