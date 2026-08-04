@@ -25,6 +25,12 @@ if exist(inputFile, 'file') ~= 2
     error('dcm2nii:InvalidInputFile', 'Input file does not exist: %s', inputFile);
 end
 
+[~, ~, inputExt] = fileparts(inputFile);
+if strcmpi(inputExt, '.i')
+    error('dcm2nii:UnsupportedInput', ...
+        'Legacy .i files are not supported. Provide DICOM or NIfTI (.nii, .nii.gz) input.');
+end
+
 isNifti = isNiftiFile(inputFile);
 if isempty(outputFile)
     outputFile = fullfile(fileparts(inputFile), ...
@@ -281,17 +287,16 @@ end
 
 function setupSpm()
 %SETUPSPM Reuse caller SPM or add the configured fallback temporarily.
+%   A complete caller-owned installation is authoritative and reused
+%   unchanged. An incomplete caller path (only one of the two required
+%   functions) fails clearly. If neither function is on the caller path,
+%   the configured spm_root is added as fallback.
 existingHeaders = which('spm_dicom_headers');
 existingConvert = which('spm_dicom_convert');
 if ~isempty(existingHeaders) || ~isempty(existingConvert)
     if isempty(existingHeaders) || isempty(existingConvert)
         error('dcm2nii:SpmIncomplete', ...
             'The caller MATLAB path contains only part of an SPM installation.');
-    end
-    if ~sameSpmDirectory(existingHeaders, existingConvert)
-        error('dcm2nii:SpmMixedInstallations', ...
-            ['spm_dicom_headers and spm_dicom_convert resolve to different ' ...
-             'SPM installations. dcm2nii will not mix them.']);
     end
     return;
 end
@@ -311,10 +316,6 @@ if exist('spm_dicom_headers', 'file') ~= 2 || exist('spm_dicom_convert', 'file')
          'Configured SPM root does not provide DICOM conversion functions: %s', ...
          config.spm_root);
 end
-end
-
-function result = sameSpmDirectory(firstPath, secondPath)
-result = strcmp(fileparts(firstPath), fileparts(secondPath));
 end
 
 function [outputFile, compression] = normalizeOutput(outputFile, compression)
@@ -402,7 +403,6 @@ function extension = fileExtension(filePath)
 end
 
 function pathValue = absolutePath(pathValue)
-if isstring(pathValue), pathValue = char(pathValue); end
 if ~ischar(pathValue)
     error('dcm2nii:InvalidPath', 'Paths must be character vectors.');
 end
@@ -417,7 +417,6 @@ end
 end
 
 function modality = normalizeModality(modality)
-if isstring(modality), modality = char(modality); end
 if ~ischar(modality), modality = ''; end
 modality = upper(strtrim(modality));
 if strcmp(modality, 'PET'), modality = 'PT'; end

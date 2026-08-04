@@ -1,5 +1,8 @@
 function outputPath = fromDicom(inputFile, outputFile)
 %FROMDICOM Convert one MR or CT DICOM series to NIfTI via SPM.
+%   Consumes the output list returned by spm_dicom_convert and requires
+%   exactly one generated .nii file. Zero or multiple outputs fail clearly
+%   without assuming Temp_spm.nii.
 
 series = dicom2nifti.dicom.collectSeries(inputFile);
 outputDir = fileparts(outputFile);
@@ -24,12 +27,9 @@ cd(stageDir);
 cwdCleanup = onCleanup(@() cd(currentDir));
 
 headers = spm_dicom_headers(char(series.files), true);
-spm_dicom_convert(headers, 'all', 'flat', 'nii');
-tempOutput = fullfile(stageDir, 'Temp_spm.nii');
-if exist(tempOutput, 'file') ~= 2
-    error('dicom2nifti:core:ConversionFailed', ...
-        'SPM did not produce output for: %s', inputFile);
-end
+out = spm_dicom_convert(headers, 'all', 'flat', 'nii');
+niiFiles = dicom2nifti.core.resolveOutputs(out.files, stageDir);
+tempOutput = niiFiles{1};
 
 [ok, message] = movefile(tempOutput, outputFile, 'f');
 if ~ok

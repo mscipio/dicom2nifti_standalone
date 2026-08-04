@@ -98,7 +98,6 @@ if strcmp(modality, 'PET'), modality = 'PT'; end
 end
 
 function pathValue = normalizePath(pathValue)
-if isstring(pathValue), pathValue = char(pathValue); end
 if ~ischar(pathValue) || isempty(strtrim(pathValue))
     error('dicom2nifti:dicom:EmptyPath', 'Representative file path is empty.');
 end
