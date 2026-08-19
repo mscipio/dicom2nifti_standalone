@@ -2,6 +2,39 @@
 
 `VERSION` is the authoritative semantic version.
 
+## [1.2.0] - 2026-08-07
+
+### Added
+
+- New structured API entrypoint `dicom2nifti.api.run(inputFile, outputFile, ...)`
+  with a four-field result struct (`status`, `outputs`, `message`, `details`).
+  Supports headless conversion of DICOM (MR/CT/PET) and NIfTI (`.nii`/`.nii.gz`)
+  with `'Compression'` and `'Overwrite'` name-value options. No GUI dependency.
+- New config authority `config/defaults.m` containing the authoritative `spm_root`.
+- Namespaced config helpers `+dicom2nifti/+config/load.m` and `validate.m` with
+  caller-SPM-first, partial-rejection, and fallback logic.
+- New `+dicom2nifti/+gui/mainWindow.m` namespace owning the Java chooser and
+  overwrite confirmation only; delegates conversion to `api.run`.
+- New `+dicom2nifti/+gui/` and `+dicom2nifti/+config/` namespaces.
+- Focused test suites: `tests/testApi.m` (12 tests), `tests/testConfig.m` (6),
+  `tests/testEntrypoint.m` (11), `tests/testGui.m` (6).
+
+### Changed
+
+- `dcm2nii.m` rewritten as a thin parsed-varargin facade (83% line reduction)
+  dispatching to `dicom2nifti.api.run` or `dicom2nifti.gui.mainWindow`.
+  All legacy call forms preserved; error identifiers remapped for backwards
+  compatibility.
+- `config/dicom2nifti_config.m` is now a deprecated thin wrapper around
+  `dicom2nifti.config.load()`. Deployers should migrate `spm_root` to
+  `config/defaults.m`.
+
+### Preserved
+
+- `+core`, `+dicom`, and `+io` packages are unchanged.
+- Legacy `dcm2nii` path-return and `''`-on-cancellation contract preserved.
+- Authorship and maintenance acknowledgement preserved.
+
 ## [1.1.1] - 2026-08-04
 
 ### Fixed

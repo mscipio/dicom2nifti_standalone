@@ -2,7 +2,7 @@
 
 Maintained by Michele Scipioni, PhD  
 mscipioni@mgh.harvard.edu  
-Last updated: August 5, 2026.
+Last updated: August 7, 2026.
 
 Small MATLAB/SPM8 converter for one DICOM series or an existing NIfTI file.
 Converts MR, CT, and PET series to NIfTI (`.nii` or `.nii.gz`) from the
@@ -38,11 +38,15 @@ protection, and optional gzip compression.
    addpath('/path/to/dicom2nifti_standalone');
    ```
 
-2. Set the deployer-owned SPM path in `config/dicom2nifti_config.m`:
+2. Set the deployer-owned SPM path in `config/defaults.m`:
 
    ```matlab
-   config.spm_root = '/site/path/to/spm8';
+   defaults.spm_root = '/site/path/to/spm8';
    ```
+
+   `config/defaults.m` is now the authoritative configuration file.
+   The legacy `config/dicom2nifti_config.m` remains as a deprecated
+   compatibility wrapper.
 
    If the caller already has a complete SPM installation on the MATLAB path,
    dcm2nii reuses it and ignores the configured path. A partial SPM on the
@@ -76,6 +80,28 @@ dcm2nii('/data/series/instance0001.dcm', '/results/mprage.nii', ...
 
 The output extension controls compression: a `.nii.gz` destination is
 compressed, a `.nii` destination is not. No automatic suffix is generated.
+
+### Structured API (`dicom2nifti.api.run`)
+
+For headless, UI-free conversion use the structured API:
+
+```matlab
+result = dicom2nifti.api.run(inputFile, outputFile);
+result = dicom2nifti.api.run(inputFile, outputFile, ...
+    'Compression', 'gz', 'Overwrite', true);
+```
+
+The result is a 1×1 struct with four fields:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `status` | char | One of `success`, `partial`, `failed`, or `cancelled`. |
+| `outputs` | cell | Absolute paths of every committed output file. |
+| `message` | char | Operator-readable status message. |
+| `details` | struct | Diagnostic metadata (elapsed time, version info). |
+
+The legacy `dcm2nii()` facade maps this structured result to the
+backwards-compatible path-return contract for all existing call forms.
 
 ## What it converts
 
