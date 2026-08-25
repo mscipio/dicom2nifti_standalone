@@ -30,16 +30,17 @@ end
 
 function p = makeMinimalNifti(directory)
 % Write a minimal valid NIfTI-1 file and return its path.
+% The header is coherent: sizeof_hdr=348, ndim=3, 1x1x1 uint8, magic='n+1\0'.
 p = fullfile(directory, 'fixture.nii');
 hdr = zeros(1, 348, 'uint8');
-hdr(1) = 92; hdr(4) = 1;                          % sizeof_hdr = 348
-hdr(40) = 9;                                       % dim[0] = 3
-hdr(43:44) = typecast(int16(1), 'uint8');          % dim[1] = 1
-hdr(45:46) = typecast(int16(1), 'uint8');          % dim[2] = 1
-hdr(47:48) = typecast(int16(1), 'uint8');          % dim[3] = 1
-hdr(71:72) = typecast(int16(2), 'uint8');          % datatype = uint8
-hdr(73:74) = typecast(int16(16), 'uint8');         % bitpix = 16
-hdr(345:348) = [110 43 49 0];                      % magic = 'n+1\0'
+hdr(1:4)   = typecast(int32(348), 'uint8');        % sizeof_hdr = 348
+hdr(41:42) = typecast(int16(3),   'uint8');        % dim[0] = 3 (ndim)
+hdr(43:44) = typecast(int16(1),   'uint8');        % dim[1] = 1
+hdr(45:46) = typecast(int16(1),   'uint8');        % dim[2] = 1
+hdr(47:48) = typecast(int16(1),   'uint8');        % dim[3] = 1
+hdr(71:72) = typecast(int16(2),   'uint8');        % datatype = uint8 (2)
+hdr(73:74) = typecast(int16(8),   'uint8');        % bitpix = 8
+hdr(345:348) = [110 43 49 0];                    % magic = 'n+1\0'
 fid = fopen(p, 'w'); fwrite(fid, hdr); fclose(fid);
 end
 
@@ -88,6 +89,11 @@ verifyTrue(testCase, exist(outFile, 'file') == 2, ...
 % Source must still exist (copy, not move).
 verifyTrue(testCase, exist(src, 'file') == 2, ...
     'Source file must remain after copy');
+% Output bytes must equal source bytes (faithful copy).
+fidSrc = fopen(src, 'rb'); srcBytes = fread(fidSrc, '*uint8')'; fclose(fidSrc);
+fidOut = fopen(outFile, 'rb'); outBytes = fread(fidOut, '*uint8')'; fclose(fidOut);
+verifyEqual(testCase, outBytes, srcBytes, ...
+    'Copied file bytes must match source bytes exactly');
 end
 
 function testFromNiftiGzDecompression(testCase)
@@ -95,6 +101,10 @@ function testFromNiftiGzDecompression(testCase)
 [tmpDir, cleanupObj] = makeTempDir();
 srcDir = fullfile(tmpDir, 'src'); mkdir(srcDir);
 outDir = fullfile(tmpDir, 'out'); mkdir(outDir);
+% Reference uncompressed fixture for byte comparison.
+refDir = fullfile(tmpDir, 'ref'); mkdir(refDir);
+refNii = makeMinimalNifti(refDir);
+fidRef = fopen(refNii, 'rb'); originalBytes = fread(fidRef, '*uint8')'; fclose(fidRef);
 src = makeMinimalNiftiGz(srcDir);
 outFile = fullfile(outDir, 'decompressed.nii');
 
@@ -103,9 +113,10 @@ result = dicom2nifti.core.fromNifti(src, outFile);
 verifyEqual(testCase, result, outFile, 'Returned path must equal outputFile');
 verifyTrue(testCase, exist(outFile, 'file') == 2, ...
     'Decompressed output must be committed to disk');
-% The committed file should be larger than 0 bytes.
-info = dir(outFile);
-verifyTrue(testCase, info.bytes > 0, 'Decompressed file must be non-empty');
+% Decompressed bytes must equal original uncompressed fixture bytes.
+fidOut = fopen(outFile, 'rb'); outBytes = fread(fidOut, '*uint8')'; fclose(fidOut);
+verifyEqual(testCase, outBytes, originalBytes, ...
+    'Decompressed bytes must match original uncompressed fixture exactly');
 end
 
 % ---------------------------------------------------------------------------
@@ -123,6 +134,8 @@ result = dicom2nifti.core.resolveOutputs({'one.nii'}, stage);
 
 verifyEqual(testCase, numel(result), 1, 'Must resolve exactly one file');
 verifyTrue(testCase, iscell(result), 'Result must be a cell array');
+verifyEqual(testCase, result{1}, fullfile(stage, 'one.nii'), ...
+    'Resolved path must equal stageDir/one.nii');
 end
 
 function testResolveOutputsIgnoresSidecar(testCase)
@@ -136,6 +149,8 @@ result = dicom2nifti.core.resolveOutputs({'s.nii', 's.json'}, stage);
 
 verifyEqual(testCase, numel(result), 1, ...
     'Sidecar must be ignored; only .nii returned');
+verifyEqual(testCase, result{1}, fullfile(stage, 's.nii'), ...
+    'Resolved path must equal stageDir/s.nii');
 end
 
 function testResolveOutputsRejectsEmptyList(testCase)

@@ -2,6 +2,25 @@
 
 `VERSION` is the authoritative semantic version.
 
+## [1.2.2] - 2026-08-25
+
+### Changed
+
+- `tests/testCore.m`: strengthened assertions from existence/size checks to
+  exact byte-for-byte equality for the uncompressed copy and `.nii.gz`
+  decompression paths, and exact path equality for `resolveOutputs` results.
+- `tests/testCore.m`: corrected the minimal NIfTI fixture written by
+  `makeMinimalNifti` to be coherent (full 32-bit `sizeof_hdr=348`, `dim[0]`
+  at the correct offset, and `bitpix=8` matching `datatype=uint8`).
+
+### Unchanged
+
+- No production behavior changed in this release. `dcm2nii.m`, the
+  `+dicom2nifti/**` namespaces, and `config/**` are byte-identical to 1.2.1.
+  The only tree delta is the strengthened test assertions and the corrected
+  in-test fixture; no conversion algorithm, structured API, or facade
+  behavior is affected.
+
 ## [1.2.1] - 2026-08-25
 
 ### Added
