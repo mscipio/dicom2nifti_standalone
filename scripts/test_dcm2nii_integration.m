@@ -140,55 +140,6 @@ catch ME
     end
 end
 
-% --- Test 6: resolveOutputs unit tests ---
-fprintf('--- 6. resolveOutputs unit tests ---\n');
-stage = fullfile(tmpRoot, 'rsv_test'); mkdir(stage);
-
-% 6a: exactly one .nii
-dummyFile(fullfile(stage, 'one.nii'));
-try
-    r = dicom2nifti.core.resolveOutputs({'one.nii'}, stage);
-    assert(numel(r) == 1, 'expected 1');
-    fprintf('  PASS 6a: single .nii resolved\n'); passed = passed + 1;
-catch ME, fprintf('  FAIL 6a: %s\n', ME.message); failed = failed + 1; end
-
-% 6b: zero outputs — must error
-try
-    dicom2nifti.core.resolveOutputs({}, stage);
-    fprintf('  FAIL 6b: empty list did not error\n'); failed = failed + 1;
-catch ME
-    assert(contains(ME.message, 'no output'), 'wrong error for empty list');
-    fprintf('  PASS 6b: empty file list rejected\n'); passed = passed + 1;
-end
-
-% 6c: zero .nii (non-.nii files only) — must error
-dummyFile(fullfile(stage, 'sidecar.json'));
-try
-    dicom2nifti.core.resolveOutputs({'sidecar.json'}, stage);
-    fprintf('  FAIL 6c: non-.nii list did not error\n'); failed = failed + 1;
-catch ME
-    assert(contains(ME.message, 'no .nii'), 'wrong error for non-.nii list');
-    fprintf('  PASS 6c: non-.nii-only rejected\n'); passed = passed + 1;
-end
-
-% 6d: multiple .nii — must error
-dummyFile(fullfile(stage, 'v1.nii')); dummyFile(fullfile(stage, 'v2.nii'));
-try
-    dicom2nifti.core.resolveOutputs({'v1.nii', 'v2.nii'}, stage);
-    fprintf('  FAIL 6d: multiple .nii did not error\n'); failed = failed + 1;
-catch ME
-    assert(contains(ME.message, 'expected exactly 1'), 'wrong error for multiple .nii');
-    fprintf('  PASS 6d: multiple .nii rejected\n'); passed = passed + 1;
-end
-
-% 6e: 1 .nii + 1 .json — single .nii selected
-dummyFile(fullfile(stage, 's.nii')); dummyFile(fullfile(stage, 's.json'));
-try
-    r = dicom2nifti.core.resolveOutputs({'s.nii', 's.json'}, stage);
-    assert(numel(r) == 1, 'expected 1 from mixed list');
-    fprintf('  PASS 6e: 1 .nii + .json -> single .nii\n'); passed = passed + 1;
-catch ME, fprintf('  FAIL 6e: %s\n', ME.message); failed = failed + 1; end
-
 % --- Test 7: SPM authority — incomplete SPM ---
 fprintf('--- 7. SPM authority: incomplete SPM ---\n');
 fprintf('  UNVERIFIED: requires MATLAB path manipulation. Remove one\n');
@@ -276,9 +227,4 @@ hdr(71:72) = typecast(int16(2), 'uint8');   % datatype = 2 (uint8)
 hdr(73:74) = typecast(int16(16), 'uint8');  % bitpix = 16
 hdr(345:348) = [110 43 49 0];               % magic = 'n+1\0'
 fid = fopen(filePath, 'w'); fwrite(fid, hdr); fclose(fid);
-end
-
-function dummyFile(filePath)
-% Write a tiny placeholder file for resolveOutputs fixture use.
-fid = fopen(filePath, 'w'); fprintf(fid, 'x'); fclose(fid);
 end

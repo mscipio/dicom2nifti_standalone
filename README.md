@@ -2,7 +2,7 @@
 
 Maintained by Michele Scipioni, PhD  
 mscipioni@mgh.harvard.edu  
-Last updated: August 7, 2026.
+Last updated: August 25, 2026.
 
 Small MATLAB/SPM8 converter for one DICOM series or an existing NIfTI file.
 Converts MR, CT, and PET series to NIfTI (`.nii` or `.nii.gz`) from the
@@ -100,8 +100,13 @@ The result is a 1×1 struct with four fields:
 | `message` | char | Operator-readable status message. |
 | `details` | struct | Diagnostic metadata (elapsed time, version info). |
 
-The legacy `dcm2nii()` facade maps this structured result to the
-backwards-compatible path-return contract for all existing call forms.
+The `dcm2nii()` facade is a compatibility boundary for existing callers
+and scripts; headless and structured consumers should call
+`dicom2nifti.api.run` directly to receive the four-field result. The
+facade maps the structured result to the backwards-compatible
+path-return contract for all existing call forms. Retiring the facade
+or changing it to return the struct is deferred to a future coordinated
+breaking release.
 
 ## What it converts
 

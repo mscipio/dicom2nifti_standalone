@@ -2,6 +2,32 @@
 
 `VERSION` is the authoritative semantic version.
 
+## [1.2.1] - 2026-08-25
+
+### Added
+
+- Focused SPM-independent core test suite `tests/testCore.m` covering
+  `dicom2nifti.core.fromNifti` (uncompressed copy and `.nii.gz`
+  decompression) and centralizing the `dicom2nifti.core.resolveOutputs`
+  cases (single output, sidecar ignored, zero-output rejection,
+  non-NIfTI rejection, multiple-NIfTI rejection) that previously lived
+  inline in `scripts/test_dcm2nii_integration.m`.
+
+### Changed
+
+- README clarifies the compatibility boundary: `dcm2nii()` is a
+  facade for existing callers and scripts, and headless or structured
+  consumers should call `dicom2nifti.api.run` directly to receive the
+  four-field result. Notes that retiring or repurposing the facade is
+  deferred to a future coordinated breaking release.
+
+### Unchanged
+
+- No conversion algorithm, structured API, or production facade
+  behavior changed in this release. The only production-tree delta is
+  documentation; all runtime paths through `dcm2nii()` and
+  `dicom2nifti.api.run` remain byte-identical to 1.2.0.
+
 ## [1.2.0] - 2026-08-07
 
 ### Added
