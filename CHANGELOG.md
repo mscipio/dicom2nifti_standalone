@@ -2,6 +2,35 @@
 
 `VERSION` is the authoritative semantic version.
 
+## [1.2.3] - 2026-08-26
+
+### Changed
+
+- `tests/testCore.m`: corrected the synthetic minimal NIfTI fixture written
+  by `makeMinimalNifti` to be a coherent 353-byte NIfTI-1 single file:
+  348-byte header with `vox_offset=352` at bytes 109-112, 4-byte zero
+  extension indicator, and 1 uint8 voxel payload. Added
+  `testMinimalNiftiFixtureIntegrity` to guard against silent regression
+  of the fixture layout (size, vox_offset, extension block, voxel count).
+
+### Corrected
+
+- The 1.2.2 changelog stated that `makeMinimalNifti` had been corrected to
+  a coherent fixture. That wording was premature: the 1.2.2 working tree
+  still wrote only the 348-byte header (no `vox_offset`, no extension
+  block, no voxel data), producing a malformed 348-byte file. This release
+  applies the actual correction and supersedes that claim. The 1.2.2
+  published Git history is not rewritten; this entry sets the record
+  straight for downstream consumers.
+
+### Unchanged
+
+- No production behavior changed in this release. `dcm2nii.m`, the
+  `+dicom2nifti/**` namespaces, and `config/**` are byte-identical to
+  1.2.2. No conversion algorithm, structured API, facade behavior, or
+  public compatibility contract is affected. The only tree delta is the
+  corrected in-test fixture and its regression guard in `tests/testCore.m`.
+
 ## [1.2.2] - 2026-08-25
 
 ### Changed

@@ -29,19 +29,28 @@ end
 % ---------------------------------------------------------------------------
 
 function p = makeMinimalNifti(directory)
-% Write a minimal valid NIfTI-1 file and return its path.
-% The header is coherent: sizeof_hdr=348, ndim=3, 1x1x1 uint8, magic='n+1\0'.
+% Write a minimal valid NIfTI-1 single-file (.nii) and return its path.
+% Layout: 348-byte header + 4-byte zero extension indicator + 1 uint8 voxel.
+% Total: 353 bytes.  vox_offset = 352 (header + extension block).
+% Header fields: sizeof_hdr=348, ndim=3, 1x1x1, datatype=uint8, magic='n+1\0'.
 p = fullfile(directory, 'fixture.nii');
 hdr = zeros(1, 348, 'uint8');
-hdr(1:4)   = typecast(int32(348), 'uint8');        % sizeof_hdr = 348
-hdr(41:42) = typecast(int16(3),   'uint8');        % dim[0] = 3 (ndim)
-hdr(43:44) = typecast(int16(1),   'uint8');        % dim[1] = 1
-hdr(45:46) = typecast(int16(1),   'uint8');        % dim[2] = 1
-hdr(47:48) = typecast(int16(1),   'uint8');        % dim[3] = 1
-hdr(71:72) = typecast(int16(2),   'uint8');        % datatype = uint8 (2)
-hdr(73:74) = typecast(int16(8),   'uint8');        % bitpix = 8
-hdr(345:348) = [110 43 49 0];                    % magic = 'n+1\0'
-fid = fopen(p, 'w'); fwrite(fid, hdr); fclose(fid);
+hdr(1:4)     = typecast(int32(348), 'uint8');      % sizeof_hdr = 348
+hdr(41:42)   = typecast(int16(3),   'uint8');      % dim[0] = 3 (ndim)
+hdr(43:44)   = typecast(int16(1),   'uint8');      % dim[1] = 1
+hdr(45:46)   = typecast(int16(1),   'uint8');      % dim[2] = 1
+hdr(47:48)   = typecast(int16(1),   'uint8');      % dim[3] = 1
+hdr(71:72)   = typecast(int16(2),   'uint8');      % datatype = uint8 (2)
+hdr(73:74)   = typecast(int16(8),   'uint8');      % bitpix = 8
+hdr(109:112) = typecast(single(352), 'uint8');     % vox_offset = 352
+hdr(345:348) = [110 43 49 0];                      % magic = 'n+1\0'
+ext = zeros(1, 4, 'uint8');                        % 4-byte extension indicator (none)
+vox = uint8(0);                                    % single uint8 voxel
+fid = fopen(p, 'w');
+fwrite(fid, hdr);
+fwrite(fid, ext);
+fwrite(fid, vox);
+fclose(fid);
 end
 
 function gzPath = makeMinimalNiftiGz(directory)
@@ -117,6 +126,44 @@ verifyTrue(testCase, exist(outFile, 'file') == 2, ...
 fidOut = fopen(outFile, 'rb'); outBytes = fread(fidOut, '*uint8')'; fclose(fidOut);
 verifyEqual(testCase, outBytes, originalBytes, ...
     'Decompressed bytes must match original uncompressed fixture exactly');
+end
+
+% ---------------------------------------------------------------------------
+% Fixture integrity — guard against silent regression of makeMinimalNifti
+% ---------------------------------------------------------------------------
+
+function testMinimalNiftiFixtureIntegrity(testCase)
+% The minimal NIfTI fixture MUST be a coherent 353-byte single-file NIfTI-1:
+%   348 header + 4 zero extension bytes + 1 uint8 voxel.
+% This test prevents the defect (missing vox_offset / extension / voxel)
+% from recurring silently.
+[tmpDir, cleanupObj] = makeTempDir();
+src = makeMinimalNifti(tmpDir);
+
+% 1. File size must be exactly 353 bytes.
+info = dir(src);
+verifyEqual(testCase, double(info.bytes), 353, ...
+    'Fixture must be exactly 353 bytes (348 hdr + 4 ext + 1 voxel)');
+
+% Read raw bytes for byte-level inspection.
+fid = fopen(src, 'rb');
+bytes = fread(fid, '*uint8')';
+fclose(fid);
+
+% 2. vox_offset (bytes 109-112, 1-indexed) must encode 352 as float32.
+voxOffsetBytes = bytes(109:112);
+voxOffset = typecast(voxOffsetBytes, 'single');
+verifyEqual(testCase, voxOffset, single(352), ...
+    'vox_offset field must encode 352 (header + extension block)');
+
+% 3. 4-byte extension indicator (bytes 349-352) must be all zeros (no extension).
+extBlock = bytes(349:352);
+verifyEqual(testCase, extBlock, zeros(1, 4, 'uint8'), ...
+    '4-byte extension indicator must be present and zero');
+
+% 4. Exactly one voxel payload byte remains (byte 353).
+verifyEqual(testCase, numel(bytes) - 352, 1, ...
+    'Exactly one voxel payload byte must follow the extension block');
 end
 
 % ---------------------------------------------------------------------------
