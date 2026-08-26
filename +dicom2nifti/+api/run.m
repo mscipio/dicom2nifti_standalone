@@ -139,8 +139,8 @@ else
 end
 
 % Log start + dispatch to +core
-dicom2nifti.io.logMessage('INFO', 'api.run', 'Input: %s', inputFile);
-dicom2nifti.io.logMessage('INFO', 'api.run', 'Output: %s', outputFile);
+dicom2nifti.io.logMessage('INFO', 'dcm2nii', 'Input: %s', inputFile);
+dicom2nifti.io.logMessage('INFO', 'dcm2nii', 'Output: %s', outputFile);
 t0 = tic;
 
 conversionOk = true;
@@ -153,7 +153,7 @@ try
 catch ME
     result.status = 'failed';
     result.message = ME.message;
-    dicom2nifti.io.logMessage('ERROR', 'api.run', 'Conversion failed: %s', ME.message);
+    dicom2nifti.io.logMessage('ERROR', 'dcm2nii', 'Conversion failed: %s', ME.message);
     conversionOk = false;
 end
 
@@ -165,7 +165,7 @@ if conversionOk && strcmp(compression, 'gz')
         result.status = 'failed';
         result.message = ME.message;
         result.outputs = {outPath};
-        dicom2nifti.io.logMessage('ERROR', 'api.run', ...
+        dicom2nifti.io.logMessage('ERROR', 'dcm2nii', ...
             'Compression failed: %s', ME.message);
         conversionOk = false;
     end
@@ -180,7 +180,7 @@ if conversionOk
         verFailed = true;
         result.message = ME.message;
         result.details.version_log_error = ME.message;
-        dicom2nifti.io.logMessage('WARN', 'api.run', ...
+        dicom2nifti.io.logMessage('WARN', 'dcm2nii', ...
             'Version log failed: %s', ME.message);
     end
 end
@@ -201,7 +201,7 @@ if conversionOk
     end
 
     result.message = sprintf('Conversion completed (%.1f sec)', toc(t0));
-    dicom2nifti.io.logMessage('SUCCESS', 'api.run', result.message);
+    dicom2nifti.io.logMessage('SUCCESS', 'dcm2nii', result.message);
 end
 
 % ==== END MAIN BODY

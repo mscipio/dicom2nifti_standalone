@@ -2,6 +2,34 @@
 
 `VERSION` is the authoritative semantic version.
 
+## [1.2.4] - 2026-08-26
+
+### Changed
+
+- `+dicom2nifti/+api/run.m`: the six `dicom2nifti.io.logMessage` calls now
+  pass `'dcm2nii'` as the log context instead of `'api.run'` (lines 142,
+  143, 156, 168, 183, 204). This aligns the log tag with the user-facing
+  command name (`dcm2nii`) so that production log output identifies the
+  subprocess consistently regardless of whether callers invoke the
+  `dcm2nii()` facade or `dicom2nifti.api.run` directly.
+
+### Fixed
+
+- Log context clarity: when `dicom2nifti.api.run` was called through the
+  `dcm2nii()` facade, log lines emitted `'api.run'` as the subsystem tag,
+  which was misleading in production traces that expect the subprocess
+  name. The six affected log sites (start/input, start/output, conversion
+  failure, compression failure, version-log failure, success) now emit
+  `'dcm2nii'` to match the subprocess identity.
+
+### Unchanged
+
+- No conversion algorithm, structured API, return shape, or error
+  behavior changed. `dcm2nii.m`, the `+dicom2nifti/+core/**` namespace,
+  `+dicom2nifti/+io/**`, and `config/**` are byte-identical to 1.2.3.
+  README, tests, and scripts are untouched. The only production-tree
+  delta is the log context string at the six sites above.
+
 ## [1.2.3] - 2026-08-26
 
 ### Changed
